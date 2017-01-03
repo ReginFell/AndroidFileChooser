@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.List;
 
 public class FileChooserDialog extends AppCompatDialogFragment implements ItemHolder.OnItemClickListener, View.OnClickListener {
+
     private final static String KEY_CHOOSER_TYPE = "chooserType";
     private final static String KEY_CHOOSER_LISTENER = "chooserListener";
     private final static String KEY_TITLE = "title";
@@ -49,12 +50,156 @@ public class FileChooserDialog extends AppCompatDialogFragment implements ItemHo
         void onSelect(String path);
     }
 
-    public enum ChooserType implements Serializable {
+    public enum ChooserType  {
         FILE_CHOOSER,
         DIRECTORY_CHOOSER
     }
 
-    public static class Builder {
+    private Button btnPrevDirectory, btnSelectDirectory;
+    private RecyclerView rvItems;
+    private TextView tvCurrentDirectory;
+    private ChooserType chooserType;
+    private ChooserListener chooserListener;
+    private ItemsAdapter itemsAdapter;
+    private String[] fileFormats;
+    private String currentDirectoryPath, title, initialDirectory, selectDirectoryButtonText;
+    @DrawableRes
+    private int directoryIconId, fileIconId, previousDirectoryButtonIconId, selectDirectoryButtonBackgroundId;
+    @ColorRes
+    private int selectDirectoryButtonTextColorId;
+    private float selectDirectoryButtonTextSize;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getGivenArguments();
+        if (title == null) {
+            // Remove dialog's title
+            // Since setting the style after the fragment is created doesn't have any effect
+            // so we have to decide about dialog's title here.
+            setStyle(DialogFragment.STYLE_NO_TITLE, 0);
+        }
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_chooser, container, false);
+        findViews(view);
+        setListeners();
+        getDialog().setTitle(title);
+
+        if (chooserType == ChooserType.DIRECTORY_CHOOSER) {
+            btnSelectDirectory.setVisibility(View.VISIBLE);
+            btnSelectDirectory.setText(selectDirectoryButtonText);
+            if (selectDirectoryButtonBackgroundId != 0)
+                btnSelectDirectory.setBackgroundResource(selectDirectoryButtonBackgroundId);
+            if (selectDirectoryButtonTextColorId != 0)
+                btnSelectDirectory.setTextColor(getResources().getColor(selectDirectoryButtonTextColorId));
+            if (selectDirectoryButtonTextSize > 0)
+                btnSelectDirectory.setTextSize(selectDirectoryButtonTextSize);
+        }
+        btnPrevDirectory.setBackgroundResource(previousDirectoryButtonIconId);
+
+        itemsAdapter = new ItemsAdapter(this);
+        rvItems.setLayoutManager(new LinearLayoutManager(getActivity()));
+        rvItems.setAdapter(itemsAdapter);
+
+        loadItems(initialDirectory != null ? initialDirectory : Environment.getExternalStorageDirectory().getPath());
+
+        return view;
+    }
+
+    @Override
+    public void onItemClick(Item item) {
+        if (item.isDirectory()) {
+            loadItems(item.getPath());
+        } else {
+            chooserListener.onSelect(item.getPath());
+            dismiss();
+        }
+    }
+
+    @Override
+    public void onClick(View view) {
+        int id = view.getId();
+        if (id == R.id.previous_dir_imagebutton) {
+            File parent = new File(currentDirectoryPath).getParentFile();
+            if (parent != null && parent.canRead()) {
+                loadItems(parent.getPath());
+            }
+        } else if (id == R.id.select_dir_button) {
+            chooserListener.onSelect(currentDirectoryPath);
+            dismiss();
+        }
+    }
+
+    private void loadItems(String path) {
+        currentDirectoryPath = path;
+
+        String currentDir = path.substring(path.lastIndexOf(File.separator) + 1);
+        tvCurrentDirectory.setText(currentDir);
+
+        File[] files = new File(path).listFiles(new FileFilter() {
+            @Override
+            public boolean accept(File file) {
+                if (file.canRead()) {
+                    if (chooserType == ChooserType.FILE_CHOOSER && file.isFile()) {
+                        if (fileFormats != null && fileFormats.length > 0) {
+                            for (String fileFormat : fileFormats) {
+                                if (file.getName().endsWith(fileFormat)) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }
+                        return true;
+                    }
+                    return file.isDirectory();
+                }
+                return false;
+            }
+        });
+
+        List<Item> items = new ArrayList<>();
+        for (File f : files) {
+            int drawableId = f.isFile() ? fileIconId : directoryIconId;
+            Drawable drawable = ContextCompat.getDrawable(getActivity().getApplicationContext(), drawableId);
+            items.add(new Item(f.getPath(), drawable));
+        }
+        Collections.sort(items);
+
+        itemsAdapter.setItems(items);
+    }
+
+    private void getGivenArguments() {
+        Bundle args = getArguments();
+        chooserType = (ChooserType) args.getSerializable(KEY_CHOOSER_TYPE);
+        chooserListener = (ChooserListener) args.getSerializable(KEY_CHOOSER_LISTENER);
+        title = args.getString(KEY_TITLE);
+        fileFormats = args.getStringArray(KEY_FILE_FORMATS);
+        initialDirectory = args.getString(KEY_INITIAL_DIRECTORY);
+        selectDirectoryButtonText = args.getString(KEY_SELECT_DIRECTORY_BUTTON_TEXT);
+        selectDirectoryButtonTextSize = args.getFloat(KEY_SELECT_DIRECTORY_BUTTON_TEXT_SIZE);
+        selectDirectoryButtonTextColorId = args.getInt(KEY_SELECT_DIRECTORY_BUTTON_TEXT_COLOR_ID);
+        selectDirectoryButtonBackgroundId = args.getInt(KEY_SELECT_DIRECTORY_BUTTON_BACKGROUND_ID);
+        fileIconId = args.getInt(KEY_FILE_ICON_ID);
+        directoryIconId = args.getInt(KEY_DIRECTORY_ICON_ID);
+        previousDirectoryButtonIconId = args.getInt(KEY_PREVIOUS_DIRECTORY_BUTTON_ICON_ID);
+    }
+
+    private void setListeners() {
+        btnPrevDirectory.setOnClickListener(this);
+        btnSelectDirectory.setOnClickListener(this);
+    }
+
+    private void findViews(View v) {
+        rvItems = (RecyclerView) v.findViewById(R.id.items_recyclerview);
+        btnPrevDirectory = (Button) v.findViewById(R.id.previous_dir_imagebutton);
+        btnSelectDirectory = (Button) v.findViewById(R.id.select_dir_button);
+        tvCurrentDirectory = (TextView) v.findViewById(R.id.current_dir_textview);
+    }
+
+    public static class Builder implements Serializable {
         // Required parameters
         private ChooserType chooserType;
         private ChooserListener chooserListener;
@@ -239,149 +384,5 @@ public class FileChooserDialog extends AppCompatDialogFragment implements ItemHo
 
             return fragment;
         }
-    }
-
-    private Button btnPrevDirectory, btnSelectDirectory;
-    private RecyclerView rvItems;
-    private TextView tvCurrentDirectory;
-    private ChooserType chooserType;
-    private ChooserListener chooserListener;
-    private ItemsAdapter itemsAdapter;
-    private String[] fileFormats;
-    private String currentDirectoryPath, title, initialDirectory, selectDirectoryButtonText;
-    @DrawableRes
-    private int directoryIconId, fileIconId, previousDirectoryButtonIconId, selectDirectoryButtonBackgroundId;
-    @ColorRes
-    private int selectDirectoryButtonTextColorId;
-    private float selectDirectoryButtonTextSize;
-
-    @Override
-    public void onCreate(@Nullable Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        getGivenArguments();
-        if (title == null) {
-            // Remove dialog's title
-            // Since setting the style after the fragment is created doesn't have any effect
-            // so we have to decide about dialog's title here.
-            setStyle(DialogFragment.STYLE_NO_TITLE, 0);
-        }
-    }
-
-    @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_chooser, container, false);
-        findViews(view);
-        setListeners();
-        getDialog().setTitle(title);
-
-        if (chooserType == ChooserType.DIRECTORY_CHOOSER) {
-            btnSelectDirectory.setVisibility(View.VISIBLE);
-            btnSelectDirectory.setText(selectDirectoryButtonText);
-            if (selectDirectoryButtonBackgroundId != 0)
-                btnSelectDirectory.setBackgroundResource(selectDirectoryButtonBackgroundId);
-            if (selectDirectoryButtonTextColorId != 0)
-                btnSelectDirectory.setTextColor(getResources().getColor(selectDirectoryButtonTextColorId));
-            if (selectDirectoryButtonTextSize > 0)
-                btnSelectDirectory.setTextSize(selectDirectoryButtonTextSize);
-        }
-        btnPrevDirectory.setBackgroundResource(previousDirectoryButtonIconId);
-
-        itemsAdapter = new ItemsAdapter(this);
-        rvItems.setLayoutManager(new LinearLayoutManager(getActivity()));
-        rvItems.setAdapter(itemsAdapter);
-
-        loadItems(initialDirectory != null ? initialDirectory : Environment.getExternalStorageDirectory().getPath());
-
-        return view;
-    }
-
-    @Override
-    public void onItemClick(Item item) {
-        if (item.isDirectory()) {
-            loadItems(item.getPath());
-        } else {
-            chooserListener.onSelect(item.getPath());
-            dismiss();
-        }
-    }
-
-    @Override
-    public void onClick(View view) {
-        int id = view.getId();
-        if (id == R.id.previous_dir_imagebutton) {
-            File parent = new File(currentDirectoryPath).getParentFile();
-            if (parent != null && parent.canRead()) {
-                loadItems(parent.getPath());
-            }
-        } else if (id == R.id.select_dir_button) {
-            chooserListener.onSelect(currentDirectoryPath);
-            dismiss();
-        }
-    }
-
-    private void loadItems(String path) {
-        currentDirectoryPath = path;
-
-        String currentDir = path.substring(path.lastIndexOf(File.separator) + 1);
-        tvCurrentDirectory.setText(currentDir);
-
-        File[] files = new File(path).listFiles(new FileFilter() {
-            @Override
-            public boolean accept(File file) {
-                if (file.canRead()) {
-                    if (chooserType == ChooserType.FILE_CHOOSER && file.isFile()) {
-                        if (fileFormats != null && fileFormats.length > 0) {
-                            for (String fileFormat : fileFormats) {
-                                if (file.getName().endsWith(fileFormat)) {
-                                    return true;
-                                }
-                            }
-                            return false;
-                        }
-                        return true;
-                    }
-                    return file.isDirectory();
-                }
-                return false;
-            }
-        });
-
-        List<Item> items = new ArrayList<>();
-        for (File f : files) {
-            int drawableId = f.isFile() ? fileIconId : directoryIconId;
-            Drawable drawable = ContextCompat.getDrawable(getActivity().getApplicationContext(), drawableId);
-            items.add(new Item(f.getPath(), drawable));
-        }
-        Collections.sort(items);
-
-        itemsAdapter.setItems(items);
-    }
-
-    private void getGivenArguments() {
-        Bundle args = getArguments();
-        chooserType = (ChooserType) args.getSerializable(KEY_CHOOSER_TYPE);
-        chooserListener = (ChooserListener) args.getSerializable(KEY_CHOOSER_LISTENER);
-        title = args.getString(KEY_TITLE);
-        fileFormats = args.getStringArray(KEY_FILE_FORMATS);
-        initialDirectory = args.getString(KEY_INITIAL_DIRECTORY);
-        selectDirectoryButtonText = args.getString(KEY_SELECT_DIRECTORY_BUTTON_TEXT);
-        selectDirectoryButtonTextSize = args.getFloat(KEY_SELECT_DIRECTORY_BUTTON_TEXT_SIZE);
-        selectDirectoryButtonTextColorId = args.getInt(KEY_SELECT_DIRECTORY_BUTTON_TEXT_COLOR_ID);
-        selectDirectoryButtonBackgroundId = args.getInt(KEY_SELECT_DIRECTORY_BUTTON_BACKGROUND_ID);
-        fileIconId = args.getInt(KEY_FILE_ICON_ID);
-        directoryIconId = args.getInt(KEY_DIRECTORY_ICON_ID);
-        previousDirectoryButtonIconId = args.getInt(KEY_PREVIOUS_DIRECTORY_BUTTON_ICON_ID);
-    }
-
-    private void setListeners() {
-        btnPrevDirectory.setOnClickListener(this);
-        btnSelectDirectory.setOnClickListener(this);
-    }
-
-    private void findViews(View v) {
-        rvItems = (RecyclerView) v.findViewById(R.id.items_recyclerview);
-        btnPrevDirectory = (Button) v.findViewById(R.id.previous_dir_imagebutton);
-        btnSelectDirectory = (Button) v.findViewById(R.id.select_dir_button);
-        tvCurrentDirectory = (TextView) v.findViewById(R.id.current_dir_textview);
     }
 }

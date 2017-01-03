@@ -49,7 +49,7 @@ public class FileChooserDialog extends AppCompatDialogFragment implements ItemHo
         void onSelect(String path);
     }
 
-    public enum ChooserType {
+    public enum ChooserType implements Serializable {
         FILE_CHOOSER,
         DIRECTORY_CHOOSER
     }

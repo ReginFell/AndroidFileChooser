@@ -4,8 +4,9 @@ import android.graphics.drawable.Drawable;
 import android.support.annotation.NonNull;
 
 import java.io.File;
+import java.io.Serializable;
 
-class Item extends File implements Comparable<File> {
+class Item extends File implements Comparable<File>, Serializable{
     private Drawable icon;
 
     public Item(String path, Drawable icon) {

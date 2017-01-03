@@ -199,7 +199,7 @@ public class FileChooserDialog extends AppCompatDialogFragment implements ItemHo
         tvCurrentDirectory = (TextView) v.findViewById(R.id.current_dir_textview);
     }
 
-    public static class Builder implements Serializable {
+    public static class Builder {
         // Required parameters
         private ChooserType chooserType;
         private ChooserListener chooserListener;
